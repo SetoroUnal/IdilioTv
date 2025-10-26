@@ -35,7 +35,7 @@ def validate_events(df):
     if "received_at" in deduped.columns:
         issues["received_before_event"] = int((deduped["received_at"] < deduped["event_timestamp"]).sum())
     if "created_at" in deduped.columns and "received_at" in deduped.columns:
-        issues["created_before_received"] = int((deduped["created_at"] < deduped["received_at"]).sum())
+        issues["created_before_received"] = int((deduped["created_at"] > deduped["received_at"]).sum())
 
     return deduped.reset_index(drop=True), issues
 
