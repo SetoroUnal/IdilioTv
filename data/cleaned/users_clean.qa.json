@@ -1,0 +1,8 @@
+{
+  "null_user_id": 0,
+  "null_signup_date": 0,
+  "null_last_active_date": 0,
+  "temporal_inconsistencies": 0,
+  "dropped_missing_user_id": 0,
+  "duplicates_removed": 0
+}
