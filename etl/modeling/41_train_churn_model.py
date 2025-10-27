@@ -65,49 +65,65 @@ def pick_threshold_by_recall(y_true, y_proba, min_recall=0.60, min_precision=0.1
     return float(thresholds[best_idx])
 
 def safe_plot_curves(y_true, y_proba, model_name, out_dir_docs):
-    """Guarda ROC y PR si matplotlib está disponible; si no, continúa sin fallar."""
+    """
+    Genera y guarda las curvas ROC y Precision-Recall en formato PNG.
+    Usa backend Agg para asegurar guardado en entornos sin GUI.
+    """
+    import os
+    import numpy as np
+    import matplotlib
+    matplotlib.use("Agg")  # fuerza backend no interactivo
+    import matplotlib.pyplot as plt
+    from sklearn.metrics import roc_auc_score, roc_curve, precision_recall_curve
+
     try:
-        print(f"[DEBUG] Intentando guardar gráficos en: {out_dir_docs}")
-        print(f"[DEBUG] Tipo de out_dir_docs: {type(out_dir_docs)} - Existe: {os.path.exists(out_dir_docs)}")
+        os.makedirs(out_dir_docs, exist_ok=True)
+        print(f"[PLOT] Guardando gráficos en: {out_dir_docs}")
 
-        import matplotlib
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
-
-
+        # -------------------------------
+        # ROC Curve
+        # -------------------------------
         fpr, tpr, _ = roc_curve(y_true, y_proba)
         auc = roc_auc_score(y_true, y_proba)
 
-        os.makedirs(out_dir_docs, exist_ok=True)
-
-        # ROC
         plt.figure()
         plt.plot(fpr, tpr, label=f"{model_name} (AUC={auc:.3f})")
-        plt.plot([0,1], [0,1], linestyle="--")
+        plt.plot([0, 1], [0, 1], linestyle="--", color="gray")
         plt.xlabel("False Positive Rate")
         plt.ylabel("True Positive Rate")
-        plt.title(f"ROC - {model_name}")
+        plt.title(f"ROC Curve - {model_name}")
         plt.legend(loc="lower right")
-        roc_path = os.path.join(out_dir_docs, f"roc_{model_name}.png")
-        print(f"[DEBUG] Guardando ROC en: {roc_path}")
-        plt.savefig(roc_path, bbox_inches="tight")
-        plt.close()
 
-        # PR
+        roc_path = os.path.join(out_dir_docs, f"roc_{model_name}.png")
+        plt.savefig(roc_path, dpi=150, bbox_inches="tight")
+        plt.close()
+        if not os.path.exists(roc_path):
+            raise FileNotFoundError(f"No se creó el archivo {roc_path}")
+        print(f"[OK] ROC guardado: {roc_path}")
+
+        # -------------------------------
+        # Precision-Recall Curve
+        # -------------------------------
         precisions, recalls, _ = precision_recall_curve(y_true, y_proba)
         plt.figure()
-        plt.plot(recalls, precisions)
-        plt.xlabel("Recall (Positive class: churn=1)")
+        plt.plot(recalls, precisions, color="darkorange")
+        plt.xlabel("Recall (churn=1)")
         plt.ylabel("Precision")
-        plt.title(f"Precision-Recall - {model_name}")
+        plt.title(f"Precision-Recall Curve - {model_name}")
+
         pr_path = os.path.join(out_dir_docs, f"pr_{model_name}.png")
-        print(f"[DEBUG] Guardando ROC en: {roc_path}")
-        plt.savefig(pr_path, bbox_inches="tight")
+        plt.savefig(pr_path, dpi=150, bbox_inches="tight")
         plt.close()
+        if not os.path.exists(pr_path):
+            raise FileNotFoundError(f"No se creó el archivo {pr_path}")
+        print(f"[OK] PR guardado: {pr_path}")
 
         return {"roc_path": roc_path, "pr_path": pr_path}
+
     except Exception as e:
-        return {"warning": f"No se generaron gráficos (matplotlib no disponible o error): {e}"}
+        print(f"[ERROR] No se generaron gráficos para {model_name}: {e}")
+        raise
+
 
 # ----------------------------
 # Entrenamiento
