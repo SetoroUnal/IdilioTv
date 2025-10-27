@@ -47,33 +47,43 @@ def build_retention_cohorts(users_csv, events_csv, out_csv):
     # --- Validar presencia de signup_date ---
     if "signup_date" not in merged.columns:
         raise ValueError("La columna signup_date no existe en el dataset unificado (merge).")
+  # ===============================================================
+    # Redefinición de churn_30d:
+    # Ahora mide AUSENCIA de actividad en los primeros 30 días.
+    # Antes medía longevidad (último evento > 30d).
+    # Esto alinea churn_30d con D7/D30 para retención temprana.
+    # ===============================================================
 
-    # --- Retención D7 y D30 ---
-    print("\nCalculando métricas D7, D30 y churn...")
+    print("\nCalculando métricas D7, D30 y churn (versión consistente)...")
+
+    # --- Calcular días desde el registro ---
     merged["days_since_signup"] = (merged["event_timestamp"] - merged["signup_date"]).dt.days
 
+    # --- Retención D7 y D30 ---
     d7 = merged[merged["days_since_signup"] <= 7].groupby("user_id").size().reset_index(name="events_D7")
     d30 = merged[merged["days_since_signup"] <= 30].groupby("user_id").size().reset_index(name="events_D30")
 
-    churn = merged.groupby("user_id")["days_since_signup"].max().reset_index()
-    churn["churn_30d"] = churn["days_since_signup"].apply(lambda x: 0 if pd.notnull(x) and x > 30 else 1)
+    # --- Nuevo cálculo coherente de churn_30d ---
+    # Usuarios con actividad en los primeros 30 días
+    active_30d = set(merged[merged["days_since_signup"] <= 30]["user_id"].unique())
 
-    # --- Unir métricas ---
+    # churn_30d = 1 si el usuario NO tuvo eventos en ≤30 días, 0 si sí los tuvo
+    users["churn_30d"] = users["user_id"].apply(lambda x: 0 if x in active_30d else 1)
+
+ # --- Unir métricas ---
     metrics = (
-        users.merge(d7, on="user_id", how="left")
+        users[["user_id", "signup_date", "cohort_month", "churn_30d"]]
+        .merge(d7, on="user_id", how="left")
         .merge(d30, on="user_id", how="left")
-        .merge(churn[["user_id", "churn_30d"]], on="user_id", how="left")
     )
+    # --- Rellenar nulos ---
+    metrics.fillna({"events_D7": 0, "events_D30": 0}, inplace=True)
 
-    metrics.fillna({"events_D7": 0, "events_D30": 0, "churn_30d": 1}, inplace=True)
-
-    # --- Guardar ---
+    # --- Guardar resultado ---
     out_metrics = out_csv.replace("retention_cohorts.csv", "user_retention_metrics.csv")
     metrics.to_csv(out_metrics, index=False)
     print(f" Métricas de retención individuales guardadas en {out_metrics}")
-
-    print("\nEjecución completada correctamente.")
-
+    
 def main():
     build_retention_cohorts(
         users_csv="data/cleaned/users_clean.csv",
