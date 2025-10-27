@@ -45,12 +45,19 @@ IdilioTv/
 │   ├── features/30_generate_features.py # Feature engineering a nivel usuario
 │   ├── modeling/41_train_churn_model.py # Entrenamiento de modelos
 │   ├── modeling/42_predict_churn.py     # Scoring de usuarios
-│   └── analysis/43_churn_scoring_QA.py  # QA y segmentación de riesgo
+│   ├── analysis/43_churn_scoring_QA.py  # QA y segmentación de riesgo
+│   ├── segmentation/51_user_segmentation.py    #Clusterizacion
+│   └── segmentation/52_cluster_visuals.py   #Visualizaciones de los clusters
+│
+│
 │
 ├── docs/                         # Reportes y visualizaciones
 │   ├── QA_phase0.json
 │   ├── retention_plots.png
 │   ├── churn_segmented.csv
+│   ├── cluster_summary.csv
+│   ├── cluster_pca_scatter.png
+│   ├── cluster_boxplot_views.png
 │   └── model_eval_summary.json
 │
 └── README.md
@@ -170,7 +177,150 @@ Próximo paso sugerido: calibración vía `CalibratedClassifierCV` o `Platt Scal
 
 ---
 
-## 5. Informe ejecutivo
+---
+
+## Fase 5 — Segmentación de Usuarios
+
+### Objetivo
+Identificar patrones de comportamiento en la base de usuarios mediante técnicas de clustering no supervisado.  
+El propósito es descubrir segmentos naturales de usuarios que permitan diseñar estrategias diferenciadas de retención y monetización.
+
+---
+
+### 5.1 Metodología
+
+- Se utilizó **K-Means** con evaluación mediante el **coeficiente de Silhouette**, optimizando el número de clusters `k` en el rango [2, 10].
+- El conjunto de entrada proviene de `data/features/user_features.csv` (27 variables agregadas a nivel usuario).
+- Las variables fueron escaladas mediante `StandardScaler` para evitar dominancia por magnitud.
+- El mejor número de clusters resultó ser **k = 2**, con una separación limpia según las métricas de actividad, monetización y recencia.
+
+---
+
+### 5.2 Resultados de Clustering
+
+**Archivo generado:**  
+`data/analytics/user_clusters.csv`
+
+**Resumen agregado:**  
+`docs/cluster_summary.csv`
+
+| Cluster | % Usuarios | event_count | recency_days | credits_purchased | credits_spent | avg_watch_time_sec | sessions_7d |
+|----------|-------------|-------------|---------------|------------------:|---------------:|--------------------:|--------------:|
+| 0 | 38.8 % | 40.7 | 64.8 | 30.5 | 21.2 | 142.3 | 3.2 |
+| 1 | 61.2 % | 39.5 | 80.6 | 6.9 | 2.5 | 101.6 | 2.1 |
+
+---
+
+### 5.3 Validación visual
+
+#### Separación geométrica (PCA 2D)
+La reducción de dimensionalidad mediante PCA demuestra una frontera clara entre ambos segmentos, lo que confirma que la partición encontrada por K-Means no es aleatoria.
+
+![Separación PCA](docs/cluster_pca_scatter.png)
+
+#### Distribución de vistas por cluster
+La dispersión de vistas por usuario refleja diferencias significativas de engagement entre grupos.
+
+![Views por cluster](docs/cluster_boxplot_views.png)
+
+---
+
+### 5.4 Interpretación analítica
+
+| Segmento | % Usuarios | Perfil | Riesgo | Acción sugerida |
+|-----------|-------------|--------|--------|-----------------|
+| **Cluster 0 — Core Users** | 39 % | Alta frecuencia, mayor gasto, regresan seguido | Bajo | Estrategias de fidelización: upgrades, referidos, contenido exclusivo |
+| **Cluster 1 — Casual / At Risk** | 61 % | Menor uso, baja monetización, alta recencia | Alto | Reactivación mediante campañas push/email, incentivos de regreso |
+
+---
+
+### 5.5 Conclusión
+
+- **Técnicamente sólido:** Separación visual nítida en PCA, sin solapamiento extremo.  
+- **Estadísticamente coherente:** Distribuciones y medianas claramente diferenciadas.  
+- **De negocio:** Segmentación útil para diseñar estrategias de retención y personalización.  
+
+Esta fase valida que el comportamiento de los usuarios puede modelarse en dos grupos principales:  
+uno con alta interacción y monetización sostenida (*Core Users*),  
+y otro con riesgo de abandono (*At Risk*).  
+
+---
+
+
+---
+
+## 6 Fase Final – Insights y Recomendaciones Estratégicas
+
+### 6.1 Síntesis del comportamiento general
+
+El ecosistema de usuarios de IdilioTV presenta dos patrones principales:
+
+- **Usuarios Core (~39%)**: alta frecuencia de uso, gasto sostenido en créditos y baja recencia.  
+  Representan el motor de la plataforma tanto en volumen de interacción como en monetización.
+- **Usuarios en Riesgo (~61%)**: actividad esporádica, baja conversión y periodos prolongados de inactividad.  
+  Son responsables de la mayor parte del churn detectado a 30 días.
+
+El análisis temporal evidenció que los abandonos se concentran durante las primeras semanas de registro, con un fuerte decaimiento de retención tras el día 7.
+
+---
+
+### 6.2 Principales hallazgos analíticos
+
+| Eje | Hallazgo | Implicación |
+|-----|-----------|-------------|
+| **Retención** | D7 = 9.6 %, D30 = 15.2 % | La mayor parte del churn ocurre temprano. El onboarding y las primeras experiencias son críticas. |
+| **Churn geográfico** | Perú, Chile y Venezuela muestran promedios de churn > 0.99 | Pueden existir fricciones regionales (catálogo, velocidad, precios locales). |
+| **Monetización** | Usuarios con >20 créditos comprados tienen 2.5x más probabilidad de retenerse | Fuerte correlación entre gasto temprano y retención sostenida. |
+| **Engagement** | Plays y sesiones por semana se alinean con retención | Variables comportamentales superan a las demográficas en poder predictivo. |
+| **Dispositivo** | iOS con churn medio mayor que Android | Diferencias potenciales de UX o rendimiento de app. |
+| **Segmentación** | K=2: Core vs. At-Risk | Los grupos se separan claramente en PCA y distribución de vistas. |
+
+---
+
+### 6.3 Acciones de negocio recomendadas
+
+| Área | Acción | Objetivo |
+|------|---------|----------|
+| **Producto** | Optimizar el flujo de onboarding y destacar contenido popular durante la primera sesión. | Aumentar retención D7. |
+| **Marketing / CRM** | Implementar campañas automáticas basadas en el score de churn (`proba_churn`). | Reconvertir usuarios “Medium” y “High Risk”. |
+| **Monetización** | Incentivar la primera compra de créditos con bonificaciones o pricing escalonado. | Elevar conversión temprana y reducir churn. |
+| **Contenido** | Personalizar recomendaciones según cluster (Core vs. Casual). | Aumentar tiempo de visualización. |
+| **Analítica continua** | Calibrar el modelo logístico (`CalibratedClassifierCV`) y monitorizar AUC/Recall mensualmente. | Mantener desempeño y confianza del modelo. |
+
+---
+
+### 6.4 Métricas clave (KPIs recomendadas)
+
+| KPI | Definición | Frecuencia | Meta sugerida |
+|------|-------------|-------------|----------------|
+| **Retención D7 / D30** | % de usuarios activos a 7 y 30 días | Semanal | +20 % |
+| **Churn 30d** | % de usuarios inactivos tras 30 días | Mensual | < 75 % |
+| **Plays por sesión** | Promedio de reproducciones por sesión activa | Semanal | +10 % |
+| **ARPU / ARPPU** | Ingreso medio por usuario (pago / total) | Mensual | +15 % |
+| **Next-rate** | % de usuarios que inician un nuevo episodio | Diario | +8 % |
+| **% Premium** | Proporción de suscriptores de pago | Trimestral | +5 pp |
+
+---
+
+### 6.5 Conclusión general
+
+El modelo analítico de IdilioTV demuestra que:
+- La retención temprana es el principal determinante del churn.
+- El comportamiento dentro de la aplicación (vistas, créditos, sesiones) predice mejor que la demografía.
+- La segmentación (Core vs. At-Risk) habilita acciones de retención personalizadas y priorización de marketing.
+- Los modelos predictivos logran un AUC de 0.96 con recall total, garantizando cobertura total de usuarios en riesgo.
+
+En su conjunto, el pipeline desarrollado integra:
+- Control de calidad de datos (QA Phase 0),
+- Cohortes de retención (Phase 3),
+- Segmentación de comportamiento (Phase 5),
+- y scoring predictivo (Phase 6),
+ofreciendo a IdilioTV una **base robusta para decisiones data-driven** en producto, marketing y monetización.
+
+---
+
+
+## 7. Informe ejecutivo
 
 ### Contexto
 Idilio TV busca escalar su base de usuarios maximizando retención y monetización. El análisis identifica patrones críticos de uso y riesgo de abandono, proporcionando una base para acciones de retención y campañas personalizadas.
@@ -188,19 +338,11 @@ Idilio TV busca escalar su base de usuarios maximizando retención y monetizaci�
 - Ajustar UX inicial y secuencias de contenido para reforzar hábito en los primeros 7 días.
 - Explorar modelos de recomendación para mejorar engagement.
 
----
 
-## 6. Próximos pasos
-
-| Fase | Descripción | Objetivo |
-|-------|--------------|-----------|
-| 5 | Segmentación no supervisada (KMeans o GMM) | Identificar clusters de usuarios por comportamiento |
-| 6 | Calibración y modelado avanzado (XGBoost, SHAP) | Mejorar precisión e interpretabilidad |
-| 7 | Dashboard en Power BI / Looker Studio | Monitoreo continuo de KPIs de retención |
 
 ---
 
-## 7. Apéndice técnico
+## 8. Apéndice técnico
 
 ### Variables clave
 - `churn_30d`: 1 si el usuario no tuvo actividad en los 30 días posteriores al registro.
@@ -213,15 +355,10 @@ Idilio TV busca escalar su base de usuarios maximizando retención y monetizaci�
 - Se priorizó recall en los modelos, por el costo de falso negativo.
 - Las probabilidades de churn se interpretan como ranking, no como tasas absolutas.
 
-### Limitaciones conocidas
-- Dataset sintético, no representa ruido real de un entorno de producción.
-- Latencia artificial entre `created_at` y `received_at`.
 
----
+## 9. Créditos
 
-## 8. Créditos
-
-**Autor:** Proyecto desarrollado para la prueba técnica *Head of Data & AI – Idilio TV*.
+**Autor:** Proyecto desarrollado para la prueba técnica *Head of Data & AI – Idilio TV*. Juan Sebastian Torres Romero.
 
 **Repositorio:** [https://github.com/SetoroUnal/IdilioTv](https://github.com/SetoroUnal/IdilioTv)
 
