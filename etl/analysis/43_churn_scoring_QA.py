@@ -67,6 +67,58 @@ def summarize_churn_predictions():
         print(f"\nPromedio por {col}:\n", churn_sub.to_string(index=False))
 
     print(f"\nArchivos guardados en: {OUT_DIR}")
+    
+        # --- QA de calibración básica ---
+    bins = np.linspace(0, 1, 11)
+    df["bucket"] = pd.cut(df["proba_churn"], bins=bins, include_lowest=True)
+    actuals = df.groupby("bucket")["pred_churn"].mean().reset_index()
+    actuals["count"] = df["bucket"].value_counts().values
+    print("\n=== QA Calibración ===")
+    print(actuals.to_string(index=False))
+    # ======================================
+    #  SEGMENTACIÓN POR PERCENTILES DE RIESGO
+    # ======================================
+    print("\nCreando segmentación por percentiles...")
+
+    # Si ya existe vista enriquecida úsala, si no usa df actual
+    try:
+        df_seg = df.copy()
+    except NameError:
+        df_seg = pd.read_csv(PRED_PATH).merge(pd.read_csv(USERS_PATH), on="user_id", how="left")
+
+    # Calcular percentil (0–100)
+    df_seg["churn_percentile"] = df_seg["proba_churn"].rank(pct=True) * 100
+
+    # Asignar segmento
+    def assign_segment(p):
+        if p >= 80:
+            return "High Risk"
+        elif p >= 40:
+            return "Medium Risk"
+        else:
+            return "Low Risk"
+
+    df_seg["risk_segment"] = df_seg["churn_percentile"].apply(assign_segment)
+
+    # Conteo por segmento
+    seg_summary = (
+        df_seg.groupby("risk_segment")["user_id"]
+        .count()
+        .reset_index()
+        .rename(columns={"user_id": "user_count"})
+        .sort_values("risk_segment", ascending=False)
+    )
+    seg_summary["pct"] = (seg_summary["user_count"] / len(df_seg) * 100).round(2)
+
+    # Guardar resultados
+    seg_path = os.path.join(OUT_DIR, "churn_segmented.csv")
+    df_seg.to_csv(seg_path, index=False)
+    print(f"\nSegmentación por riesgo guardada en: {seg_path}")
+
+    seg_sum_path = os.path.join(OUT_DIR, "churn_segment_summary.csv")
+    seg_summary.to_csv(seg_sum_path, index=False)
+    print("\nDistribución de segmentos:\n", seg_summary.to_string(index=False))
+
 
 if __name__ == "__main__":
     summarize_churn_predictions()
