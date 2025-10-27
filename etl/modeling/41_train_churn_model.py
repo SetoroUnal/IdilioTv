@@ -5,23 +5,20 @@ import joblib
 import numpy as np
 import pandas as pd
 
-
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import (
-    roc_auc_score, roc_curve,
-    precision_recall_curve, classification_report,
-    confusion_matrix
+    roc_auc_score, roc_curve, precision_recall_curve,
+    classification_report, confusion_matrix
 )
 
-# ----------------------------
-# Utilidades
-# ----------------------------
-
+# =========================================
+# Utilidades SIN GRÁFICOS (solo CSV/JSON)
+# =========================================
 def evaluate_at_threshold(y_true, y_proba, thresh):
     y_pred = (y_proba >= thresh).astype(int)
     cm = confusion_matrix(y_true, y_pred, labels=[0,1])
-    report = classification_report(y_true, y_pred, digits=3, output_dict=True)
+    report = classification_report(y_true, y_pred, digits=4, output_dict=True)
     auc = roc_auc_score(y_true, y_proba)
     return {
         "threshold": float(thresh),
@@ -30,112 +27,90 @@ def evaluate_at_threshold(y_true, y_proba, thresh):
             "tn": int(cm[0,0]), "fp": int(cm[0,1]),
             "fn": int(cm[1,0]), "tp": int(cm[1,1])
         },
-        "precision": float(report["1"]["precision"]),
-        "recall": float(report["1"]["recall"]),
-        "f1": float(report["1"]["f1-score"]),
+        "precision_pos": float(report["1"]["precision"]),
+        "recall_pos": float(report["1"]["recall"]),
+        "f1_pos": float(report["1"]["f1-score"]),
         "support_pos": int(report["1"]["support"]),
+        "precision_neg": float(report["0"]["precision"]),
+        "recall_neg": float(report["0"]["recall"]),
+        "f1_neg": float(report["0"]["f1-score"]),
         "support_neg": int(report["0"]["support"])
     }
 
 def pick_threshold_by_recall(y_true, y_proba, min_recall=0.60, min_precision=0.15):
-    """Elige el menor umbral que logra al menos min_recall y min_precision (clase positiva=churn=1).
-       Si no hay ninguno, devuelve el que maximiza F1."""
     precisions, recalls, thresholds = precision_recall_curve(y_true, y_proba)
     # thresholds tiene len = len(precisions)-1
-    best_idx = None
-    for i in range(len(thresholds)):
-        p = precisions[i]
-        r = recalls[i]
+    for i, thr in enumerate(thresholds):
+        p, r = precisions[i], recalls[i]
         if r >= min_recall and p >= min_precision:
-            best_idx = i
-            break
-    if best_idx is not None:
-        return float(thresholds[best_idx])
-
+            return float(thr)
     # fallback: maximizar F1
     f1s = []
-    for i in range(len(thresholds)):
-        p = precisions[i]
-        r = recalls[i]
-        if p + r > 0:
-            f1s.append(2*p*r/(p+r))
-        else:
-            f1s.append(0.0)
+    for i, thr in enumerate(thresholds):
+        p, r = precisions[i], recalls[i]
+        f1s.append(0.0 if (p+r)==0 else 2*p*r/(p+r))
     best_idx = int(np.argmax(f1s))
     return float(thresholds[best_idx])
 
-def safe_plot_curves(y_true, y_proba, model_name, out_dir_docs):
-    """
-    Genera y guarda las curvas ROC y Precision-Recall en formato PNG.
-    Usa backend Agg para asegurar guardado en entornos sin GUI.
-    """
-    import os
-    import numpy as np
-    import matplotlib
-    matplotlib.use("Agg")  # fuerza backend no interactivo
-    import matplotlib.pyplot as plt
-    from sklearn.metrics import roc_auc_score, roc_curve, precision_recall_curve
+def dump_curves_to_csv(y_true, y_proba, model_name, out_docs_dir):
+    os.makedirs(out_docs_dir, exist_ok=True)
 
-    try:
-        os.makedirs(out_dir_docs, exist_ok=True)
-        print(f"[PLOT] Guardando gráficos en: {out_dir_docs}")
+    # ROC
+    fpr, tpr, thr_roc = roc_curve(y_true, y_proba)
+    auc = roc_auc_score(y_true, y_proba)
 
-        # -------------------------------
-        # ROC Curve
-        # -------------------------------
-        fpr, tpr, _ = roc_curve(y_true, y_proba)
-        auc = roc_auc_score(y_true, y_proba)
+    # Empatar longitudes de forma robusta
+    min_len = min(len(fpr), len(tpr), len(thr_roc))
+    roc_df = pd.DataFrame({
+        "fpr": fpr[:min_len],
+        "tpr": tpr[:min_len],
+        "threshold": thr_roc[:min_len]
+    })
+    roc_path = os.path.join(out_docs_dir, f"roc_points_{model_name}.csv")
+    roc_df.to_csv(roc_path, index=False)
 
-        plt.figure()
-        plt.plot(fpr, tpr, label=f"{model_name} (AUC={auc:.3f})")
-        plt.plot([0, 1], [0, 1], linestyle="--", color="gray")
-        plt.xlabel("False Positive Rate")
-        plt.ylabel("True Positive Rate")
-        plt.title(f"ROC Curve - {model_name}")
-        plt.legend(loc="lower right")
+    # PR
+    precisions, recalls, thr_pr = precision_recall_curve(y_true, y_proba)
+    pr_len = min(len(precisions), len(recalls))
+    pr_df = pd.DataFrame({
+        "recall": recalls[:pr_len],
+        "precision": precisions[:pr_len]
+    })
+    pr_path = os.path.join(out_docs_dir, f"pr_points_{model_name}.csv")
+    pr_df.to_csv(pr_path, index=False)
 
-        roc_path = os.path.join(out_dir_docs, f"roc_{model_name}.png")
-        plt.savefig(roc_path, dpi=150, bbox_inches="tight")
-        plt.close()
-        if not os.path.exists(roc_path):
-            raise FileNotFoundError(f"No se creó el archivo {roc_path}")
-        print(f"[OK] ROC guardado: {roc_path}")
-
-        # -------------------------------
-        # Precision-Recall Curve
-        # -------------------------------
-        precisions, recalls, _ = precision_recall_curve(y_true, y_proba)
-        plt.figure()
-        plt.plot(recalls, precisions, color="darkorange")
-        plt.xlabel("Recall (churn=1)")
-        plt.ylabel("Precision")
-        plt.title(f"Precision-Recall Curve - {model_name}")
-
-        pr_path = os.path.join(out_dir_docs, f"pr_{model_name}.png")
-        plt.savefig(pr_path, dpi=150, bbox_inches="tight")
-        plt.close()
-        if not os.path.exists(pr_path):
-            raise FileNotFoundError(f"No se creó el archivo {pr_path}")
-        print(f"[OK] PR guardado: {pr_path}")
-
-        return {"roc_path": roc_path, "pr_path": pr_path}
-
-    except Exception as e:
-        print(f"[ERROR] No se generaron gráficos para {model_name}: {e}")
-        raise
+    return {"roc_csv": roc_path, "pr_csv": pr_path, "auc": float(auc)}
 
 
-# ----------------------------
-# Entrenamiento
-# ----------------------------
+def sweep_thresholds(y_true, y_proba, steps=50):
+    # barrido uniforme entre 0 y 1 excluyendo extremos que dan todo 0/1
+    grid = np.linspace(0.01, 0.99, steps)
+    rows = []
+    for t in grid:
+        m = evaluate_at_threshold(y_true, y_proba, t)
+        rows.append({
+            "threshold": m["threshold"],
+            "auc": m["auc"],
+            "precision_pos": m["precision_pos"],
+            "recall_pos": m["recall_pos"],
+            "f1_pos": m["f1_pos"],
+            "tn": m["confusion_matrix"]["tn"],
+            "fp": m["confusion_matrix"]["fp"],
+            "fn": m["confusion_matrix"]["fn"],
+            "tp": m["confusion_matrix"]["tp"],
+        })
+    return pd.DataFrame(rows)
 
+# =========================================
+# Entrenamiento principal
+# =========================================
 def train_and_eval_models(
-    x_train_csv="C:/Users/Setoro/Desktop/Idilio/IdilioTv/data/features/X_train.csv",
-    x_test_csv="C:/Users/Setoro/Desktop/Idilio/IdilioTv/data/features/X_test.csv",
-    y_train_csv="C:/Users/Setoro/Desktop/Idilio/IdilioTv/data/features/y_train.csv",
-    y_test_csv="C:/Users/Setoro/Desktop/Idilio/IdilioTv/data/features/y_test.csv",
-    out_models_dir="C:/Users/Setoro/Desktop/Idilio/IdilioTv/data/models",
-    out_docs_dir="C:/Users/Setoro/Desktop/Idilio/IdilioTv/docs"
+    x_train_csv=r"C:\Users\Setoro\Desktop\Idilio\IdilioTv\data\features\X_train.csv",
+    x_test_csv =r"C:\Users\Setoro\Desktop\Idilio\IdilioTv\data\features\X_test.csv",
+    y_train_csv=r"C:\Users\Setoro\Desktop\Idilio\IdilioTv\data\features\y_train.csv",
+    y_test_csv =r"C:\Users\Setoro\Desktop\Idilio\IdilioTv\data\features\y_test.csv",
+    out_models_dir=r"C:\Users\Setoro\Desktop\Idilio\IdilioTv\data\models",
+    out_docs_dir  =r"C:\Users\Setoro\Desktop\Idilio\IdilioTv\docs"
 ):
     print("Cargando datasets de entrenamiento/prueba...")
     X_train = pd.read_csv(x_train_csv)
@@ -155,40 +130,47 @@ def train_and_eval_models(
     # Modelo 1: Logistic Regression
     # ------------------------
     print("\nEntrenando LogisticRegression (class_weight='balanced')...")
-    lr = LogisticRegression(max_iter=1000, class_weight="balanced", random_state=42, n_jobs=None)
+    lr = LogisticRegression(max_iter=1000, class_weight="balanced", random_state=42)
     lr.fit(X_train, y_train)
     proba_lr = lr.predict_proba(X_test)[:,1]
 
-    # Selección de umbral (priorizamos recall con un mínimo de precision)
-    thresh_lr = pick_threshold_by_recall(y_test, proba_lr, min_recall=0.60, min_precision=0.15)
-    eval_lr = evaluate_at_threshold(y_test, proba_lr, thresh_lr)
-    curves_lr = safe_plot_curves(y_test, proba_lr, "logreg", out_docs_dir)
+    # Umbral
+    thr_lr = pick_threshold_by_recall(y_test, proba_lr, min_recall=0.60, min_precision=0.15)
+    eval_lr = evaluate_at_threshold(y_test, proba_lr, thr_lr)
+
+    # Curvas a CSV (no PNG)
+    curves_lr = dump_curves_to_csv(y_test, proba_lr, "logreg", out_docs_dir)
+
+    # Importancias (coeficientes)
+    coef_df = pd.DataFrame({
+        "feature": X_train.columns,
+        "importance": lr.coef_[0]
+    }).sort_values("importance", key=np.abs, ascending=False)
+    coef_path = os.path.join(out_docs_dir, "feature_importance_logreg.csv")
+    coef_df.to_csv(coef_path, index=False)
 
     # Guardar artefacto
-    lr_artifact = {
-        "model_type": "LogisticRegression",
-        "sk_params": lr.get_params(),
-        "feature_names": list(X_train.columns),
-        "threshold": eval_lr["threshold"]
-    }
-    joblib.dump({"model": lr, "threshold": eval_lr["threshold"], "features": list(X_train.columns)},
+    joblib.dump({"model": lr, "threshold": thr_lr, "features": list(X_train.columns)},
                 os.path.join(out_models_dir, "churn_model_logreg.pkl"))
+
+    # Sweeps
+    sweep_lr = sweep_thresholds(y_test, proba_lr, steps=60)
+    sweep_lr_path = os.path.join(out_docs_dir, "threshold_sweep_logreg.csv")
+    sweep_lr.to_csv(sweep_lr_path, index=False)
 
     results["logreg"] = {
         "evaluation": eval_lr,
-        "plots": curves_lr,
-        "artifact": lr_artifact
+        "curves_csv": curves_lr,
+        "importance_csv": coef_path,
+        "sweep_csv": sweep_lr_path
     }
 
     # ------------------------
-    # Modelo 2: Random Forest (sin nuevas dependencias)
+    # Modelo 2: Random Forest
     # ------------------------
-    print("\nEntrenando RandomForestClassifier (balanceado vía class_weight)...")
+    print("\nEntrenando RandomForestClassifier (class_weight='balanced')...")
     rf = RandomForestClassifier(
         n_estimators=400,
-        max_depth=None,
-        min_samples_split=2,
-        min_samples_leaf=1,
         class_weight="balanced",
         random_state=42,
         n_jobs=-1
@@ -196,40 +178,49 @@ def train_and_eval_models(
     rf.fit(X_train, y_train)
     proba_rf = rf.predict_proba(X_test)[:,1]
 
-    thresh_rf = pick_threshold_by_recall(y_test, proba_rf, min_recall=0.60, min_precision=0.15)
-    eval_rf = evaluate_at_threshold(y_test, proba_rf, thresh_rf)
-    curves_rf = safe_plot_curves(y_test, proba_rf, "rf", out_docs_dir)
+    thr_rf = pick_threshold_by_recall(y_test, proba_rf, min_recall=0.60, min_precision=0.15)
+    eval_rf = evaluate_at_threshold(y_test, proba_rf, thr_rf)
 
-    joblib.dump({"model": rf, "threshold": eval_rf["threshold"], "features": list(X_train.columns)},
+    curves_rf = dump_curves_to_csv(y_test, proba_rf, "rf", out_docs_dir)
+
+    # Importancias (Gini)
+    imp_df = pd.DataFrame({
+        "feature": X_train.columns,
+        "importance": rf.feature_importances_
+    }).sort_values("importance", ascending=False)
+    imp_path = os.path.join(out_docs_dir, "feature_importance_rf.csv")
+    imp_df.to_csv(imp_path, index=False)
+
+    joblib.dump({"model": rf, "threshold": thr_rf, "features": list(X_train.columns)},
                 os.path.join(out_models_dir, "churn_model_rf.pkl"))
+
+    sweep_rf = sweep_thresholds(y_test, proba_rf, steps=60)
+    sweep_rf_path = os.path.join(out_docs_dir, "threshold_sweep_rf.csv")
+    sweep_rf.to_csv(sweep_rf_path, index=False)
 
     results["random_forest"] = {
         "evaluation": eval_rf,
-        "plots": curves_rf,
-        "artifact": {
-            "model_type": "RandomForestClassifier",
-            "sk_params": rf.get_params(),
-            "feature_names": list(X_train.columns),
-            "threshold": eval_rf["threshold"]
-        }
+        "curves_csv": curves_rf,
+        "importance_csv": imp_path,
+        "sweep_csv": sweep_rf_path
     }
 
     # ------------------------
-    # Resumen comparativo
+    # Resumen comparativo (JSON)
     # ------------------------
     summary = {
         "logreg": {
-            "AUC": results["logreg"]["evaluation"]["auc"],
-            "Recall": results["logreg"]["evaluation"]["recall"],
-            "Precision": results["logreg"]["evaluation"]["precision"],
-            "F1": results["logreg"]["evaluation"]["f1"],
+            "AUC": results["logreg"]["curves_csv"]["auc"],
+            "Recall": results["logreg"]["evaluation"]["recall_pos"],
+            "Precision": results["logreg"]["evaluation"]["precision_pos"],
+            "F1": results["logreg"]["evaluation"]["f1_pos"],
             "Threshold": results["logreg"]["evaluation"]["threshold"]
         },
         "random_forest": {
-            "AUC": results["random_forest"]["evaluation"]["auc"],
-            "Recall": results["random_forest"]["evaluation"]["recall"],
-            "Precision": results["random_forest"]["evaluation"]["precision"],
-            "F1": results["random_forest"]["evaluation"]["f1"],
+            "AUC": results["random_forest"]["curves_csv"]["auc"],
+            "Recall": results["random_forest"]["evaluation"]["recall_pos"],
+            "Precision": results["random_forest"]["evaluation"]["precision_pos"],
+            "F1": results["random_forest"]["evaluation"]["f1_pos"],
             "Threshold": results["random_forest"]["evaluation"]["threshold"]
         }
     }
@@ -237,22 +228,15 @@ def train_and_eval_models(
     with open(os.path.join(out_docs_dir, "model_eval_summary.json"), "w", encoding="utf-8") as f:
         json.dump(summary, f, ensure_ascii=False, indent=2)
 
-    print("\n== Resumen (umbral ajustado por recall mínimo) ==")
+    print("\n== Resumen (sin gráficos, con CSV de curvas) ==")
     for name, met in summary.items():
         print(f"{name:>12}: AUC={met['AUC']:.3f} | Recall={met['Recall']:.3f} | Precision={met['Precision']:.3f} | F1={met['F1']:.3f} | thr={met['Threshold']:.3f}")
 
     print(f"\nModelos guardados en: {out_models_dir}")
-    print(f"Métricas/plots en: {out_docs_dir}")
+    print(f"Reportes/curvas CSV en: {out_docs_dir}")
 
 def main():
-    train_and_eval_models(
-        x_train_csv="C:/Users/Setoro/Desktop/Idilio/IdilioTv/data/features/X_train.csv",
-        x_test_csv="C:/Users/Setoro/Desktop/Idilio/IdilioTv/data/features/X_test.csv",
-        y_train_csv="C:/Users/Setoro/Desktop/Idilio/IdilioTv/data/features/y_train.csv",
-        y_test_csv="C:/Users/Setoro/Desktop/Idilio/IdilioTv/data/features/y_test.csv",
-        out_models_dir="C:/Users/Setoro/Desktop/Idilio/IdilioTv/data/models",
-        out_docs_dir="C:/Users/Setoro/Desktop/Idilio/IdilioTv/docs"
-    )
+    train_and_eval_models()
 
 if __name__ == "__main__":
     main()
