@@ -27,32 +27,35 @@ El objetivo fue construir un pipeline reproducible, auditable y analíticamente 
 
 ## 3. Estructura del proyecto
 
+```
 IdilioTv/
 ├── data/
-│ ├── raw/ # Datos originales
-│ ├── cleaned/ # Datos limpios y validados (Fase 0)
-│ ├── features/ # Features derivadas (Fase 2)
-│ ├── cohorts/ # Cohortes y métricas de retención (Fase 3)
-│ ├── models/ # Modelos entrenados y predicciones (Fase 4)
-│ └── analytics/ # Resultados intermedios
+│   ├── raw/                      # Datos originales
+│   ├── cleaned/                  # Datos limpios y validados (Fase 0)
+│   ├── features/                 # Features derivadas (Fase 2)
+│   ├── cohorts/                  # Cohortes y métricas de retención (Fase 3)
+│   ├── models/                   # Modelos entrenados y predicciones (Fase 4)
+│   └── analytics/                # Resultados intermedios
 │
 ├── etl/
-│ ├── 01_clean_users.py # Limpieza de usuarios
-│ ├── 02_clean_events.py # Limpieza de eventos
-│ ├── 21_auditoria_temporal.py # Auditoría de consistencia temporal
-│ ├── cohorts/31_cohorts_retention.py # Cálculo de cohortes de retención
-│ ├── features/30_generate_features.py # Feature engineering a nivel usuario
-│ ├── modeling/41_train_churn_model.py # Entrenamiento de modelos
-│ ├── modeling/42_predict_churn.py # Scoring de usuarios
-│ └── analysis/43_churn_scoring_QA.py # QA y segmentación de riesgo
+│   ├── 01_clean_users.py         # Limpieza de usuarios
+│   ├── 02_clean_events.py        # Limpieza de eventos
+│   ├── 21_auditoria_temporal.py  # Auditoría de consistencia temporal
+│   ├── cohorts/31_cohorts_retention.py  # Cálculo de cohortes de retención
+│   ├── features/30_generate_features.py # Feature engineering a nivel usuario
+│   ├── modeling/41_train_churn_model.py # Entrenamiento de modelos
+│   ├── modeling/42_predict_churn.py     # Scoring de usuarios
+│   └── analysis/43_churn_scoring_QA.py  # QA y segmentación de riesgo
 │
-├── docs/ # Reportes y visualizaciones
-│ ├── QA_phase0.json
-│ ├── retention_plots.png
-│ ├── churn_segmented.csv
-│ └── model_eval_summary.json
+├── docs/                         # Reportes y visualizaciones
+│   ├── QA_phase0.json
+│   ├── retention_plots.png
+│   ├── churn_segmented.csv
+│   └── model_eval_summary.json
 │
 └── README.md
+```
+
 
 
 ---
