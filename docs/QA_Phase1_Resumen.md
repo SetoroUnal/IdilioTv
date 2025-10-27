@@ -141,7 +141,37 @@ El pipeline de eventos mantiene coherencia temporal y latencias previsibles.
 
 ---
 
-## 7. Conclusión general  
+## 7. Control de fuga de información — Variable `churned_30d`
+
+El dataset original de usuarios (`idilio_user_data.csv`) incluye una columna `churned_30d` que representa
+una etiqueta de abandono nativa o precalculada.
+
+**Decisión:**  
+Excluirla completamente desde la fase de limpieza (`01_clean_users.py`), dado que:
+
+- Su origen no está documentado (no se sabe si proviene de simulación o cálculo post-evento).  
+- Introduce fuga de información al combinarse con variables de comportamiento y demográficas.  
+- El objetivo del modelo es **predecir churn a partir de actividad observada**, no replicar una etiqueta fija.
+
+**Acción implementada:**  
+La columna `churned_30d` se elimina en la etapa de limpieza con el siguiente control:
+
+```python
+if "churned_30d" in df.columns:
+    print("Eliminando columna 'churned_30d' del dataset original...")
+    df.drop(columns=["churned_30d"], inplace=True)
+
+``` 
+La métrica de churn utilizada en modelado (churn_30d) se recalcula posteriormente
+en etl/cohorts/31_cohorts_retention.py a partir del comportamiento real de eventos (event_timestamp).   
+
+** Resultado: **
+Pipeline libre de fuga de información; el target churn_30d es totalmente reproducible y consistente
+con la granularidad temporal de los datos.
+
+
+
+## 8. Conclusión general  
 
 El ecosistema de datos de Idilio TV presenta un **nivel de integridad y consistencia de clase productiva**.  
 Con latencias bajas, sin duplicados ni inconsistencias referenciales, los datos están listos para:  

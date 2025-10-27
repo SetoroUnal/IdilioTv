@@ -18,6 +18,11 @@ def validate_users(df):
         issues["missing_columns"] = missing
         return df, issues
 
+    ## eliminar target nativo para evitar fuga de información
+    if "churned_30d" in df.columns:
+        print("Eliminando columna 'churned_30d' del dataset original...")
+        df = df.drop(columns=["churned_30d"])
+    
     # Convertir fechas
     df["signup_date"] = to_datetime(df["signup_date"]).dt.normalize()
     df["last_active_date"] = to_datetime(df["last_active_date"]).dt.normalize()
@@ -32,7 +37,7 @@ def validate_users(df):
     issues["temporal_inconsistencies"] = int(inconsistent.sum())
     if inconsistent.any():
         df.loc[inconsistent, ["signup_date","last_active_date"]] = df.loc[inconsistent, ["last_active_date","signup_date"]].values
-
+        
     # Eliminar usuarios sin ID
     before = len(df)
     df = df[~df["user_id"].isna()].copy()
